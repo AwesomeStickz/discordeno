@@ -4,7 +4,9 @@
   "entryPoints": ["packages/bot", "packages/gateway", "packages/rest", "packages/types", "packages/utils"],
   "packageOptions": {
     "entryPoints": ["./src/index.ts"],
-    "exclude": ["**/dist/**/*"]
+    "exclude": ["**/dist/**/*"],
+    "gitRevision": "main",
+    "skipErrorChecking": true
   },
   "out": "./website/api_reference/generated",
   "readme": "./website/api_reference/generated/_media/README.md",

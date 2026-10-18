@@ -3,9 +3,7 @@ permissions:
   contents: read
 on:
   push:
-    branches: ['main']
-  pull_request:
-  workflow_dispatch:
+    branches: ['bench*']
 
 jobs:
   build:
@@ -14,31 +12,34 @@ jobs:
     permissions:
       contents: read
       actions: write
+    env:
+      PR_MODE: ${{ contains(github.event.head_commit.message, '[pr]') }}
+      NO_MINIFY: ${{ contains(github.event.head_commit.message, '[nominify]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: yarn
-          cache-dependency-path: yarn.lock
-      - uses: actions/setup-node@v7
-        with:
-          cache: yarn
-          cache-dependency-path: website/yarn.lock
+          cache-dependency-path: |
+            yarn.lock
+            website/yarn.lock
+      - name: Simulate public-PR hardened mode
+        if: env.PR_MODE == 'true'
+        run: echo "YARN_ENABLE_HARDENED_MODE=1" >> "$GITHUB_ENV"
       - name: yarn install (root)
         run: yarn install --immutable
-        # Root turbo cache
       - name: Cache for Turbo
         uses: rharkor/caching-for-turbo@v2.5.1
         with:
           cache-prefix: turbo-cache-
-      - name: Build all pkg
-        run: yarn build:type
-      - name: Build docs
-        run: yarn turbo build:doc --single-package
-      - run: yarn install --immutable
-        working-directory: ./website
-        # Website turbo cache
+      - name: Build docs (website deps install in parallel)
+        run: |
+          (cd website && yarn install --immutable) > website-install.log 2>&1 &
+          install_pid=$!
+          yarn build:type
+          yarn turbo build:doc --single-package
+          echo "::group::website yarn install" && wait $install_pid; status=$?; cat website-install.log; echo "::endgroup::"; exit $status
       - name: Cache for Turbo
         uses: rharkor/caching-for-turbo@v2.5.1
         with:
@@ -52,36 +53,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docusaurus-bundler-
       - name: Build website
-        run: yarn turbo build
+        run: yarn turbo build --env-mode=loose -- ${{ env.NO_MINIFY == 'true' && '--no-minify' || '' }}
         working-directory: ./website
+        env:
+          DOCUSAURUS_PERF_LOGGER: 'true'
+          SKIP_SEARCH_INDEX: ${{ env.PR_MODE }}
       - name: Upload artifact
+        if: env.PR_MODE != 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./website/build
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          cache: yarn
-          cache-dependency-path: website/yarn.lock
-      - run: yarn install --immutable
-        working-directory: ./website
-      - run: yarn typecheck
-        working-directory: ./website
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    concurrency: deploy-site
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5

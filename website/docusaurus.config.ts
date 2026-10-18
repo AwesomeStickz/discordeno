@@ -196,8 +196,8 @@ const config: Config = {
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
-        indexDocs: true,
-        indexPages: true,
+        indexDocs: process.env.SKIP_SEARCH_INDEX !== 'true',
+        indexPages: process.env.SKIP_SEARCH_INDEX !== 'true',
         docsRouteBasePath: ['/docs', 'api_reference'],
         language: ['en'],
         hashed: true,
